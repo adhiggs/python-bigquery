@@ -18,9 +18,9 @@ from google.api_core.exceptions import GoogleAPICallError  # type: ignore
 
 logger = logging.getLogger(__name__)
 try:
-    from opentelemetry import trace
-    from opentelemetry.instrumentation.utils import http_status_to_status_code
-    from opentelemetry.trace.status import Status
+    from opentelemetry import trace  # type: ignore
+    from opentelemetry.instrumentation.utils import http_status_to_status_code  # type: ignore
+    from opentelemetry.trace.status import Status  # type: ignore
 
     HAS_OPENTELEMETRY = True
     _warned_telemetry = True
@@ -107,10 +107,7 @@ def _set_client_attributes(client):
 def _set_job_attributes(job_ref):
     job_attributes = {
         "db.name": job_ref.project,
-        "location": job_ref.location,
-        "num_child_jobs": job_ref.num_child_jobs,
         "job_id": job_ref.job_id,
-        "parent_job_id": job_ref.parent_job_id,
         "state": job_ref.state,
     }
 
@@ -124,5 +121,14 @@ def _set_job_attributes(job_ref):
 
     if job_ref.ended is not None:
         job_attributes["timeEnded"] = job_ref.ended.isoformat()
+
+    if job_ref.location is not None:
+        job_attributes["location"] = job_ref.location
+
+    if job_ref.parent_job_id is not None:
+        job_attributes["parent_job_id"] = job_ref.parent_job_id
+
+    if job_ref.num_child_jobs is not None:
+        job_attributes["num_child_jobs"] = job_ref.num_child_jobs
 
     return job_attributes

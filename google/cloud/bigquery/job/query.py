@@ -1556,9 +1556,9 @@ class QueryJob(_AsyncJob):
                   No progress bar.
                 ``'tqdm'``
                   Use the :func:`tqdm.tqdm` function to print a progress bar
-                  to :data:`sys.stderr`.
+                  to :data:`sys.stdout`.
                 ``'tqdm_notebook'``
-                  Use the :func:`tqdm.tqdm_notebook` function to display a
+                  Use the :func:`tqdm.notebook.tqdm` function to display a
                   progress bar as a Jupyter notebook widget.
                 ``'tqdm_gui'``
                   Use the :func:`tqdm.tqdm_gui` function to display a
@@ -1592,6 +1592,10 @@ class QueryJob(_AsyncJob):
                 A :class:`pyarrow.Table` populated with row data and column
                 headers from the query results. The column headers are derived
                 from the destination table's schema.
+
+        Raises:
+            ValueError:
+                If the :mod:`pyarrow` library cannot be imported.
 
         .. versionadded:: 1.17.0
         """
@@ -1694,7 +1698,7 @@ class QueryJob(_AsyncJob):
     # that should only exist here in the QueryJob method.
     def to_geodataframe(
         self,
-        bqstorage_client: "bigquery_storage.BigQueryReadClient" = None,
+        bqstorage_client: Optional["bigquery_storage.BigQueryReadClient"] = None,
         dtypes: Dict[str, Any] = None,
         progress_bar_type: str = None,
         create_bqstorage_client: bool = True,

@@ -29,7 +29,10 @@ try:
 except ImportError:  # pragma: NO COVER
     pandas = None
 
-import pyarrow  # type: ignore
+try:
+    import pyarrow  # type: ignore
+except ImportError:  # pragma: NO COVER
+    pyarrow = None
 
 try:
     import geopandas  # type: ignore
@@ -39,11 +42,12 @@ else:
     _COORDINATE_REFERENCE_SYSTEM = "EPSG:4326"
 
 try:
-    import shapely.geos  # type: ignore
+    import shapely  # type: ignore
+    from shapely import wkt  # type: ignore
 except ImportError:
     shapely = None
 else:
-    _read_wkt = shapely.geos.WKTReader(shapely.geos.lgeos).read
+    _read_wkt = wkt.loads
 
 import google.api_core.exceptions
 from google.api_core.page_iterator import HTTPIterator
@@ -51,6 +55,7 @@ from google.api_core.page_iterator import HTTPIterator
 import google.cloud._helpers  # type: ignore
 from google.cloud.bigquery import _helpers
 from google.cloud.bigquery import _pandas_helpers
+from google.cloud.bigquery.exceptions import LegacyBigQueryStorageError
 from google.cloud.bigquery.schema import _build_schema_resource
 from google.cloud.bigquery.schema import _parse_schema_resource
 from google.cloud.bigquery.schema import _to_schema_fields
@@ -62,14 +67,19 @@ if typing.TYPE_CHECKING:  # pragma: NO COVER
     # Unconditionally import optional dependencies again to tell pytype that
     # they are not None, avoiding false "no attribute" errors.
     import pandas
-    import geopandas
-    from google.cloud import bigquery_storage
+    import pyarrow
+    import geopandas  # type: ignore
+    from google.cloud import bigquery_storage  # type: ignore
     from google.cloud.bigquery.dataset import DatasetReference
 
 
 _NO_GEOPANDAS_ERROR = (
     "The geopandas library is not installed, please install "
     "geopandas to use the to_geodataframe() function."
+)
+_NO_PYARROW_ERROR = (
+    "The pyarrow library is not installed, please install "
+    "pyarrow to use the to_arrow() function."
 )
 _NO_SHAPELY_ERROR = (
     "The shapely library is not installed, please install "
@@ -1420,7 +1430,7 @@ class Row(object):
             >>> Row(('a', 'b'), {'x': 0, 'y': 1}).get('z')
             None
 
-            The default value can be overrided with the ``default`` parameter.
+            The default value can be overridden with the ``default`` parameter.
 
             >>> Row(('a', 'b'), {'x': 0, 'y': 1}).get('z', '')
             ''
@@ -1584,6 +1594,17 @@ class RowIterator(HTTPIterator):
         if self.max_results is not None:
             return False
 
+        try:
+            from google.cloud import bigquery_storage  # noqa: F401
+        except ImportError:
+            return False
+
+        try:
+            _helpers.BQ_STORAGE_VERSIONS.verify_version()
+        except LegacyBigQueryStorageError as exc:
+            warnings.warn(str(exc))
+            return False
+
         return True
 
     def _get_next_page_response(self):
@@ -1653,7 +1674,7 @@ class RowIterator(HTTPIterator):
 
     def to_arrow_iterable(
         self,
-        bqstorage_client: "bigquery_storage.BigQueryReadClient" = None,
+        bqstorage_client: Optional["bigquery_storage.BigQueryReadClient"] = None,
         max_queue_size: int = _pandas_helpers._MAX_QUEUE_SIZE_DEFAULT,  # type: ignore
     ) -> Iterator["pyarrow.RecordBatch"]:
         """[Beta] Create an iterable of class:`pyarrow.RecordBatch`, to process the table as a stream.
@@ -1728,9 +1749,9 @@ class RowIterator(HTTPIterator):
                   No progress bar.
                 ``'tqdm'``
                   Use the :func:`tqdm.tqdm` function to print a progress bar
-                  to :data:`sys.stderr`.
+                  to :data:`sys.stdout`.
                 ``'tqdm_notebook'``
-                  Use the :func:`tqdm.tqdm_notebook` function to display a
+                  Use the :func:`tqdm.notebook.tqdm` function to display a
                   progress bar as a Jupyter notebook widget.
                 ``'tqdm_gui'``
                   Use the :func:`tqdm.tqdm_gui` function to display a
@@ -1760,8 +1781,15 @@ class RowIterator(HTTPIterator):
                 headers from the query results. The column headers are derived
                 from the destination table's schema.
 
+        Raises:
+            ValueError: If the :mod:`pyarrow` library cannot be imported.
+
+
         .. versionadded:: 1.17.0
         """
+        if pyarrow is None:
+            raise ValueError(_NO_PYARROW_ERROR)
+
         self._maybe_warn_max_results(bqstorage_client)
 
         if not self._validate_bqstorage(bqstorage_client, create_bqstorage_client):
@@ -1921,9 +1949,9 @@ class RowIterator(HTTPIterator):
                   No progress bar.
                 ``'tqdm'``
                   Use the :func:`tqdm.tqdm` function to print a progress bar
-                  to :data:`sys.stderr`.
+                  to :data:`sys.stdout`.
                 ``'tqdm_notebook'``
-                  Use the :func:`tqdm.tqdm_notebook` function to display a
+                  Use the :func:`tqdm.notebook.tqdm` function to display a
                   progress bar as a Jupyter notebook widget.
                 ``'tqdm_gui'``
                   Use the :func:`tqdm.tqdm_gui` function to display a
@@ -2040,7 +2068,7 @@ class RowIterator(HTTPIterator):
     # changes to job.QueryJob.to_geodataframe()
     def to_geodataframe(
         self,
-        bqstorage_client: "bigquery_storage.BigQueryReadClient" = None,
+        bqstorage_client: Optional["bigquery_storage.BigQueryReadClient"] = None,
         dtypes: Dict[str, Any] = None,
         progress_bar_type: str = None,
         create_bqstorage_client: bool = True,
@@ -2075,9 +2103,9 @@ class RowIterator(HTTPIterator):
                   No progress bar.
                 ``'tqdm'``
                   Use the :func:`tqdm.tqdm` function to print a progress bar
-                  to :data:`sys.stderr`.
+                  to :data:`sys.stdout`.
                 ``'tqdm_notebook'``
-                  Use the :func:`tqdm.tqdm_notebook` function to display a
+                  Use the :func:`tqdm.notebook.tqdm` function to display a
                   progress bar as a Jupyter notebook widget.
                 ``'tqdm_gui'``
                   Use the :func:`tqdm.tqdm_gui` function to display a
@@ -2194,6 +2222,8 @@ class _EmptyRowIterator(RowIterator):
         Returns:
             pyarrow.Table: An empty :class:`pyarrow.Table`.
         """
+        if pyarrow is None:
+            raise ValueError(_NO_PYARROW_ERROR)
         return pyarrow.Table.from_arrays(())
 
     def to_dataframe(
